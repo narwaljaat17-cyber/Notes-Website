@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Student Notes (text + drawing)</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2f3640">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  /* Phones */
+@media (max-width: 600px) {
+  body {
+    flex-direction: column;
+  }
+
+  .sidebar-left, .sidebar-right {
+    width: 100%;
+    order: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .main {
+    order: 2;
+    width: 100%;
+  }
+
+  .toolbar {
+    flex-wrap: wrap;
+    justify-content: space-around;
+  }
+
+  .editor {
+    min-height: 300px;
+    font-size: 14px;
+  }
+}
+
+/* Tablets */
+@media (min-width: 601px) and (max-width: 1024px) {
+  .sidebar-left {
+    width: 180px;
+  }
+  .sidebar-right {
+    width: 180px;
+  }
+  .editor {
+    font-size: 15px;
+  }
+}
+
+  :root{
+    --left-w:240px; --right-w:260px;
+    --bg:#f5f7fb; --panel:#ffffff; --accent:#2f80ed;
+  }
+  html,body{height:100%; margin:0; font-family:'Poppins',system-ui,Arial; background:linear-gradient(180deg,#eef6ff,#f5f7fb); color:#1f2d3d}
+  .app{height:100vh; display:flex; gap:18px; padding:18px; box-sizing:border-box}
+  /* Left saved notes */
+  .left{width:var(--left-w); background:#233041; color:#fff; border-radius:10px; padding:12px; box-shadow:0 6px 18px rgba(15,23,42,0.06); display:flex; flex-direction:column}
+  .left h3{margin:6px 0 12px; font-weight:600; font-size:16px}
+  .notes-list{overflow:auto; flex:1; display:flex; flex-direction:column; gap:8px}
+  .note-row{background:#2b3a4a; padding:10px; border-radius:8px; display:flex; align-items:flex-start; gap:8px; justify-content:space-between}
+  .note-info{cursor:pointer}
+  .note-title{font-weight:600}
+  .note-date{font-size:12px; color:#d0d7e0}
+  .note-delete{background:transparent;border:none;color:#ff8a8a; cursor:pointer; font-size:18px}
+  /* Main center */
+  .center{flex:1; display:flex; flex-direction:column; gap:12px}
+  .toolbar{background:var(--panel); padding:10px; border-radius:10px; display:flex; gap:8px; align-items:center; box-shadow:0 6px 18px rgba(15,23,42,0.05)}
+  .tool-btn{background:#f1f5f9;border:none;padding:8px 10px;border-radius:8px;cursor:pointer;font-weight:600; color:#122433}
+  .tool-btn.active{outline:2px solid rgba(47,128,237,0.18); box-shadow:0 4px 12px rgba(47,128,237,0.08)}
+  .tool-sep{width:1px;height:32px;background:#e6eef8;border-radius:2px}
+  /* Editor container — holds contenteditable and canvas overlay */
+  .editor-wrap{position:relative; flex:1; display:flex; background:var(--panel); border-radius:10px; box-shadow:0 8px 30px rgba(13,30,60,0.06); overflow:auto}
+  /* contenteditable area */
+  #editor{
+    box-sizing:border-box;
+    padding:28px;
+    width:100%;
+    min-height:100%;
+    outline:none;
+    border:none;
+    background:
+      repeating-linear-gradient(transparent, transparent 34px, #f6f9ff 35px);
+    font-size:16px;
+    line-height:1.6;
+    color:#102229;
+  }
+  /* canvas sits over the editor; it covers content area (scrollable) */
+  #drawingCanvas{
+    position:absolute;
+    top:0; left:0;
+    z-index:5;
+    touch-action:none;
+    pointer-events:none; /* enabled when drawing active */
+  }
+  /* Right options */
+  .right{width:var(--right-w); background:#233041; color:#fff; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:10px; box-shadow:0 6px 18px rgba(15,23,42,0.06)}
+  .right h3{margin:0;font-weight:600}
+  .input, select{width:100%; padding:9px; border-radius:8px; border:none; background:#2c3b4a; color:#e8f0f9}
+  .save-btn{background:linear-gradient(90deg,#2f80ed,#4da3ff); color:#fff; padding:10px;border:none;border-radius:8px; font-weight:700; cursor:pointer}
+  .muted{font-size:13px;color:#b9c7db}
+  /* responsive */
+  @media (max-width:980px){
+    .app{padding:12px; gap:12px}
+    .left{display:none}
+    .right{display:none}
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <!-- LEFT -->
+    <aside class="left" aria-label="Saved notes">
+      <h3>Saved Notes</h3>
+      <div class="notes-list" id="notesList"></div>
+      <div style="margin-top:8px"><small class="muted">Auto saved locally (browser)</small></div>
+    </aside>
+
+    <!-- CENTER -->
+    <main class="center">
+      <!-- toolbar -->
+      <div class="toolbar" role="toolbar" aria-label="Editor toolbar">
+        <!-- text format -->
+        <button class="tool-btn" id="btnBold" title="Bold (Ctrl/⌘+B)"><strong>B</strong></button>
+        <button class="tool-btn" id="btnItalic" title="Italic (Ctrl/⌘+I)"><em>I</em></button>
+        <button class="tool-btn" id="btnUnderline" title="Underline (Ctrl/⌘+U)"><u>U</u></button>
+          <div class="tool-sep"></div>
+
+  <!-- Insert image -->
+  <button class="tool-btn" id="btnInsertImage" title="Insert image">🖼️</button>
+  <input type="file" id="imageInput" accept="image/*" style="display:none" />
+
+
+        <div class="tool-sep"></div>
+
+        <!-- text color -->
+        <label class="muted" title="Text color"><input id="textColor" type="color" style="width:36px;height:36px;border-radius:6px;padding:0;border:none" /></label>
+
+        <div class="tool-sep"></div>
+
+        <!-- drawing tools -->
+        <button class="tool-btn" data-tool="pen" id="toolPen" title="Pen">✏️</button>
+        <button class="tool-btn" data-tool="marker" id="toolMarker" title="Marker">🖊️</button>
+        <button class="tool-btn" data-tool="highlighter" id="toolHigh" title="Highlighter">🖍️</button>
+        <button class="tool-btn" data-tool="eraser" id="toolEraser" title="Eraser">🧽</button>
+        <button class="tool-btn" id="btnClearDrawing" title="Clear drawing">🗑️</button>
+
+        <!-- pen color (for drawing) -->
+        <div style="margin-left:8px"></div>
+        <input id="penColor" type="color" value="#000000" title="Drawing color" style="width:36px;height:36px;border-radius:6px;padding:0;border:none"/>
+
+        <div style="flex:1"></div>
+
+        <!-- helper -->
+        <button class="tool-btn" id="btnDisableDrawing" title="Switch to text mode">✍️ Text</button>
+      </div>
+
+      <!-- editor container -->
+      <div class="editor-wrap" id="editorWrap">
+        <div id="editor" contenteditable="true" spellcheck="true" aria-label="Write notes here"></div>
+        <canvas id="drawingCanvas"></canvas>
+      </div>
+    </main>
+
+    <!-- RIGHT -->
+    <aside class="right" aria-label="Options">
+      <h3>Options</h3>
+      <input id="noteTitle" class="input" placeholder="Note title (optional)" />
+      <label class="muted">Font size</label>
+      <select id="fontSize" class="input"></select>
+      <label class="muted">Font family</label>
+      <select id="fontFamily" class="input"></select>
+      <label class="muted">Paper size</label>
+      <select id="paperSize" class="input">
+        <option value="auto">Auto</option>
+        <option value="A4">A4 width</option>
+        <option value="A5">A5 width</option>
+      </select>
+
+      <button class="save-btn" id="btnSave">Save Note</button>
+      <div style="margin-top:6px"><small class="muted">Saved notes are stored in your browser's localStorage.</small></div>
+    </aside>
+  </div>
+
+<script>
+/* ====== Utilities & initial setup ====== */
+const editor = document.getElementById('editor');
+const editorWrap = document.getElementById('editorWrap');
+const canvas = document.getElementById('drawingCanvas');
+const ctx = canvas.getContext('2d', { alpha: true });
+const notesList = document.getElementById('notesList');
+const noteTitleInput = document.getElementById('noteTitle');
+
+let notes = JSON.parse(localStorage.getItem('notes')||'[]');
+let activeTool = null;            // 'pen'|'marker'|'highlighter'|'eraser'|null
+let penColor = document.getElementById('penColor').value;
+let textColor = document.getElementById('textColor').value;
+
+/* DPI handling for crisp lines */
+function resizeCanvasKeepDrawing(){
+  // Save current drawing
+  const data = canvas.toDataURL();
+  // set canvas to full scrollable size of editor
+  // editor.scrollHeight/scrollWidth represent full content.
+  const width = Math.max(editor.scrollWidth, editor.clientWidth);
+  const height = Math.max(editor.scrollHeight, editor.clientHeight);
+  const ratio = window.devicePixelRatio || 1;
+  canvas.style.width = width + 'px';
+  canvas.style.height = height + 'px';
+  canvas.width = Math.floor(width * ratio);
+  canvas.height = Math.floor(height * ratio);
+  ctx.setTransform(ratio,0,0,ratio,0,0); // scale drawing operations
+  // restore image
+  if(data){
+    const img = new Image();
+    img.src = data;
+    img.onload = ()=> ctx.drawImage(img,0,0, width, height);
+  }
+}
+
+/* Initialize sizes */
+function initSizes(){
+  // make editorWrap height fit available area (already by CSS); resize canvas
+  resizeCanvasKeepDrawing();
+}
+window.addEventListener('load', initSizes);
+window.addEventListener('resize', initSizes);
+
+/* Call resize when editor content changes (user types, paste, etc.) */
+const observer = new MutationObserver(()=> resizeCanvasKeepDrawing());
+observer.observe(editor, { childList:true, subtree:true, characterData:true });
+
+/* Scroll sync: when editor scrolls, canvas should scroll too (it's inside editorWrap so will scroll automatically). */
+
+/* ===== Drawing logic (pointer events) ===== */
+let drawing = false;
+let lastX = 0, lastY = 0;
+
+function setActiveTool(tool){
+  activeTool = tool;
+  // enable canvas pointer events only when a drawing tool is active
+  if(tool === null){ canvas.style.pointerEvents = 'none'; }
+  else { canvas.style.pointerEvents = 'auto'; }
+  // UI active state
+  document.querySelectorAll('.tool-btn').forEach(b=> b.classList.remove('active'));
+  const sel = document.querySelector(`[data-tool="${tool}"]`);
+  if(sel) sel.classList.add('active');
+}
+
+// map pointer event to canvas coordinates accounting for CSS scaling
+function getPosFromEvent(e){
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left); // CSS px
+  const y = (e.clientY - rect.top);
+  return { x, y };
+}
+
+function pointerDown(e){
+  if(!activeTool) return;
+  drawing = true;
+  const p = getPosFromEvent(e);
+  lastX = p.x; lastY = p.y;
+  // capture to continue receiving events outside element during pointerdown
+  if(e.pointerId) e.target.setPointerCapture(e.pointerId);
+}
+function pointerUp(e){
+  drawing = false;
+  ctx.beginPath();
+  try { if(e.pointerId) e.target.releasePointerCapture(e.pointerId); } catch(_) {}
+}
+function pointerMove(e){
+  if(!drawing) return;
+  const p = getPosFromEvent(e);
+  drawLine(lastX, lastY, p.x, p.y);
+  lastX = p.x; lastY = p.y;
+}
+
+function drawLine(x1,y1,x2,y2){
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  if(activeTool === 'pen'){
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = penColor;
+    ctx.lineWidth = 2;
+  } else if(activeTool === 'marker'){
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = penColor;
+    ctx.lineWidth = 6;
+  } else if(activeTool === 'highlighter'){
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = penColor || 'yellow';
+    ctx.lineWidth = 18;
+  } else if(activeTool === 'eraser'){
+    // erase from drawing layer only
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 24;
+    ctx.strokeStyle = 'rgba(0,0,0,1)';
+  } else {
+    return;
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
+/* wired pointer events on canvas */
+canvas.addEventListener('pointerdown', pointerDown);
+canvas.addEventListener('pointermove', pointerMove);
+canvas.addEventListener('pointerup', pointerUp);
+canvas.addEventListener('pointercancel', pointerUp);
+canvas.addEventListener('pointerout', pointerUp);
+
+/* Activate drawing on toolbar clicks */
+document.querySelectorAll('[data-tool]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const t = btn.getAttribute('data-tool');
+    if(activeTool === t){ setActiveTool(null); return; } // toggle off
+    setActiveTool(t);
+  });
+});
+
+/* Stop drawing / switch back to text mode */
+document.getElementById('btnDisableDrawing').addEventListener('click', ()=>{
+  setActiveTool(null);
+  editor.focus();
+});
+
+/* Clear drawing contents */
+document.getElementById('btnClearDrawing').addEventListener('click', ()=>{
+  if(!confirm('Clear drawing layer?')) return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+});
+
+/* pen color change */
+document.getElementById('penColor').addEventListener('input', (e)=>{
+  penColor = e.target.value;
+});
+
+/* text color change (applies to selection) */
+document.getElementById('textColor').addEventListener('input', (e)=>{
+  document.execCommand('styleWithCSS', false, true);
+  document.execCommand('foreColor', false, e.target.value);
+  editor.focus();
+});
+
+/* When user clicks inside editor, disable drawing to allow text selection/caret */
+editor.addEventListener('pointerdown', ()=>{
+  setActiveTool(null);
+});
+
+/* ===== Text formatting (bold/italic/underline + font size/family) ===== */
+// bold/italic/underline buttons
+document.getElementById('btnBold').addEventListener('click', ()=>{ document.execCommand('bold'); editor.focus(); });
+document.getElementById('btnItalic').addEventListener('click', ()=>{ document.execCommand('italic'); editor.focus(); });
+document.getElementById('btnUnderline').addEventListener('click', ()=>{ document.execCommand('underline'); editor.focus(); });
+
+// font size select (2px..72px)
+const fontSizeSel = document.getElementById('fontSize');
+for(let i=2;i<=72;i+=2){
+  const o = document.createElement('option'); o.value = i+'px'; o.textContent = i+'px';
+  if(i===16) o.selected = true;
+  fontSizeSel.appendChild(o);
+}
+fontSizeSel.addEventListener('change', ()=>{
+  // execCommand fontSize uses 1-7. Use trick: set fontSize to 7 then replace it.
+  const size = fontSizeSel.value;
+  document.execCommand('fontSize', false, '7');
+  // replace resulting <font size="7"> with span style
+  const fonts = editor.getElementsByTagName('font');
+  for(let f of Array.from(fonts)){
+    if(f.size === '7'){
+      const span = document.createElement('span');
+      span.style.fontSize = size;
+      span.innerHTML = f.innerHTML;
+      f.parentNode.replaceChild(span, f);
+    }
+  }
+  editor.focus();
+});
+
+// font family (20+ choices)
+const fontFamilySel = document.getElementById('fontFamily');
+const fonts = ["Arial","Verdana","Tahoma","Times New Roman","Georgia","Courier New","Lucida Console","Trebuchet MS","Palatino Linotype","Garamond","Segoe UI","Helvetica","Poppins","Roboto","Open Sans","Lato","Montserrat","Raleway","Merriweather","Ubuntu"];
+fonts.forEach(f=>{
+  const o = document.createElement('option'); o.value=f; o.textContent=f; fontFamilySel.appendChild(o);
+});
+fontFamilySel.value = "Poppins";
+fontFamilySel.addEventListener('change', ()=>{ document.execCommand('fontName', false, fontFamilySel.value); editor.focus(); });
+
+/* ===== Save / Load / Delete notes (text HTML + drawing image) ===== */
+function renderNotes(){
+  notesList.innerHTML = '';
+  notes.forEach((n, idx)=>{
+    const row = document.createElement('div');
+    row.className = 'note-row';
+    const info = document.createElement('div');
+    info.className = 'note-info';
+    info.innerHTML = `<div class="note-title">${escapeHtml(n.title||'Untitled')}</div><div class="note-date">${n.date}</div>`;
+    info.addEventListener('click', ()=> loadNote(idx));
+    const del = document.createElement('button');
+    del.className = 'note-delete';
+    del.innerHTML = '🗑';
+    del.addEventListener('click', (ev)=>{ ev.stopPropagation(); deleteNote(idx); });
+    row.appendChild(info); row.appendChild(del);
+    notesList.appendChild(row);
+  });
+}
+
+function saveNote(){
+  const title = (noteTitleInput.value||'Untitled').trim();
+  const content = editor.innerHTML;
+  // save drawing
+  const dataURL = canvas.toDataURL('image/png');
+  const date = new Date().toLocaleString();
+  notes.push({ title, content, drawing: dataURL, date });
+  localStorage.setItem('notes', JSON.stringify(notes));
+  noteTitleInput.value = '';
+  editor.innerHTML = '';
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  renderNotes();
+}
+document.getElementById('btnSave').addEventListener('click', saveNote);
+
+function loadNote(i){
+  const n = notes[i];
+  if(!n) return;
+  editor.innerHTML = n.content || '';
+  noteTitleInput.value = n.title || '';
+  // after editor content set, ensure canvas sizing matches (use setTimeout to let DOM layout)
+  setTimeout(()=>{
+    resizeCanvasKeepDrawing();
+    if(n.drawing){
+      const img = new Image();
+      img.onload = ()=>{
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        const width = parseFloat(canvas.style.width) || canvas.width;
+        const height = parseFloat(canvas.style.height) || canvas.height;
+        ctx.drawImage(img, 0, 0, width, height);
+      };
+      img.src = n.drawing;
+    } else {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+    }
+  }, 50);
+}
+
+function deleteNote(i){
+  if(!confirm('Delete this note?')) return;
+  notes.splice(i,1);
+  localStorage.setItem('notes', JSON.stringify(notes));
+  renderNotes();
+}
+
+/* helper to escape html when rendering titles */
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* initial render */
+renderNotes();
+
+/* ===== Keyboard shortcuts (optional) ===== */
+document.addEventListener('keydown', (e)=>{
+  if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b'){ e.preventDefault(); document.execCommand('bold'); }
+  if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i'){ e.preventDefault(); document.execCommand('italic'); }
+  if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'u'){ e.preventDefault(); document.execCommand('underline'); }
+});
+
+/* ===== ensure canvas always matches editor after typing/resizing ===== */
+/* When editor is focused or changes size due to typing, call resize */
+editor.addEventListener('input', resizeCanvasKeepDrawing);
+editor.addEventListener('paste', ()=> setTimeout(resizeCanvasKeepDrawing,50));
+editor.addEventListener('keyup', resizeCanvasKeepDrawing);
+editor.addEventListener('scroll', ()=>{ /* no-op: canvas is inside container so it scrolls together */ });
+
+/* Prevent unwanted selection while drawing: when activeTool set, disable selection on editor */
+function setSelectionEnabled(enabled){
+  editor.style.userSelect = enabled ? '' : 'none';
+}
+document.querySelectorAll('[data-tool]').forEach(btn=>{
+  btn.addEventListener('click', ()=> {
+    setSelectionEnabled(activeTool === null);
+  });
+});
+
+/* ensure pointer events disabled by default (text mode) */
+setActiveTool(null);
+// Insert image function
+const imageInput = document.getElementById('imageInput');
+document.getElementById('btnInsertImage').addEventListener('click', () => {
+  imageInput.click();
+});
+
+imageInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = document.createElement('img');
+    img.src = ev.target.result;
+    img.style.maxWidth = "100%";
+    img.style.display = "block";
+    img.style.margin = "8px 0";
+    // insert at cursor
+    const sel = window.getSelection();
+    if (!sel.rangeCount) {
+      editor.appendChild(img);
+    } else {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(img);
+    }
+  };
+  reader.readAsDataURL(file);
+  e.target.value = ""; // reset for next upload
+});
+</script>
+<script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("service-worker.js")
+      .then(() => console.log("Service Worker Registered"));
+  }
+</script>
+</body>
+</html>
